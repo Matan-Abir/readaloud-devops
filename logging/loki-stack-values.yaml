@@ -1,0 +1,37 @@
+# Values for grafana/loki-stack, installed by terraform/main.tf.
+# Promtail runs as a DaemonSet, tails every container's stdout/stderr and ships
+# it to Loki with namespace/pod/container labels. Grafana comes from
+# kube-prometheus-stack, which already has Loki as a datasource.
+
+loki:
+  enabled: true
+  isDefault: false
+  persistence:
+    enabled: true
+    size: 2Gi
+  config:
+    table_manager:
+      retention_deletes_enabled: true
+      retention_period: 72h
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 512Mi
+
+promtail:
+  enabled: true
+  resources:
+    requests:
+      cpu: 20m
+      memory: 64Mi
+    limits:
+      memory: 128Mi
+
+grafana:
+  enabled: false
+prometheus:
+  enabled: false
+fluent-bit:
+  enabled: false

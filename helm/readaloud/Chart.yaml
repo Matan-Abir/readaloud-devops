@@ -1,0 +1,6 @@
+apiVersion: v2
+name: readaloud
+description: ReadAloud backend (Flask API) with PostgreSQL, ingress, monitoring hooks
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

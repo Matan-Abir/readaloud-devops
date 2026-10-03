@@ -1,0 +1,11 @@
+route:
+  receiver: "null"
+  group_by: ["alertname"]
+  routes:
+    - receiver: readaloud-team
+      matchers:
+        - alertname =~ "ReadAloud.*"
+receivers:
+  - name: "null"
+  # Add slack_configs / email_configs here for real notifications.
+  - name: readaloud-team

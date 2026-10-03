@@ -1,0 +1,90 @@
+# Laptop / classroom demo of the full ReadAloud stack without Kubernetes:
+# app + Postgres + Prometheus + Alertmanager + Grafana + Loki + Promtail.
+# The Kubernetes path (Terraform + Helm) uses the same dashboard and alert rules.
+#
+#   APP_DIR=../../readaloud-app docker compose up -d --build
+#
+name: readaloud-demo
+
+services:
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: readaloud
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-readaloud}
+      POSTGRES_DB: readaloud
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U readaloud"]
+      interval: 5s
+      retries: 10
+
+  backend:
+    image: ${BACKEND_IMAGE:-readaloud-backend:latest}
+    build: ${APP_DIR:-../../readaloud-app}/backend
+    environment:
+      DATABASE_URL: postgresql://readaloud:${POSTGRES_PASSWORD:-readaloud}@db:5432/readaloud
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev-only-change-me-to-a-long-random-string}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+    command: sh -c "flask db upgrade && exec gunicorn --bind 0.0.0.0:8000 --workers 1 --threads 4 --access-logfile - wsgi:app"
+    ports:
+      - "8000:8000"
+    volumes:
+      - uploads:/data/uploads
+    labels:
+      logging: promtail
+    depends_on:
+      db:
+        condition: service_healthy
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=2d
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ../helm/readaloud/alerts/readaloud-rules.yaml:/etc/prometheus/rules/readaloud-rules.yaml:ro
+    ports:
+      - "9090:9090"
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    volumes:
+      - ./alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    ports:
+      - "9093:9093"
+
+  loki:
+    image: grafana/loki:3.2.0
+    command: -config.file=/etc/loki/local-config.yaml
+    ports:
+      - "3100:3100"
+
+  promtail:
+    image: grafana/promtail:3.2.0
+    command: -config.file=/etc/promtail/config.yml
+    volumes:
+      - ./promtail.yml:/etc/promtail/config.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - loki
+
+  grafana:
+    image: grafana/grafana:11.2.2
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/readaloud.json
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../helm/readaloud/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+      - loki
+
+volumes:
+  pgdata:
+  uploads:
