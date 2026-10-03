@@ -12,6 +12,8 @@ practices around the app (IaC, Kubernetes/Helm, CI/CD, security scanning,
 monitoring, logging, docs), NOT about app features. Keep the app small; put effort
 into the pipeline/infrastructure. Do not gold-plate app features.
 
+Course context: see `docs/REQUIREMENTS.md`.
+
 ## 2. Repository layout (two repos - course requirement 7)
 Both live side by side locally in `D:\DevOpsPro\Final Project\`:
 
@@ -46,9 +48,10 @@ See the roadmap table in `devops/README.md`. Status: phases 1-2 done, 3-8 todo.
 7. Loki + Promtail (`devops/logging/`) - req 9
 8. ADRs, deployment steps, runbooks (`devops/docs/`) - req 10
 
-**Caveat:** the full text of the course's 10 requirements is not stored in the repo;
-only the numbers referenced above. Ask the user for the official requirement list
-and add it to `docs/REQUIREMENTS.md` before finalizing anything.
+**Requirements:** the official list is in `docs/REQUIREMENTS.md` (Technion catalog,
+chosen project = #12 AI Document Summarizer & Q&A). It also lists app gaps, notably
+the missing `GET /api/analytics` endpoint. Pipeline additionally needs Hadolint,
+Newman API tests, Terraform remote state + workspaces.
 
 ## 5. Constraints and decisions
 - Dev machine: Windows 10, 16 GB RAM. Minikube budget ~6 GB / 4 CPUs.
