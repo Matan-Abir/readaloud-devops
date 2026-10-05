@@ -28,7 +28,7 @@ backend:
 # Non-secret configuration -> ConfigMap
 config:
   GEMINI_MODEL: gemini-flash-latest
-  MAX_UPLOAD_MB: "25"
+  MAX_UPLOAD_MB: "50"
   LLM_CONTEXT_CHARS: "60000"
   TTS_CHUNK_CHARS: "1500"
 
