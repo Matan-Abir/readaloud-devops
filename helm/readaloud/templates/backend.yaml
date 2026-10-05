@@ -1,0 +1,146 @@
+{{- $fullname := include "readaloud.fullname" . -}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $fullname }}-uploads
+  labels:
+    {{- include "readaloud.labels" . | nindent 4 }}
+spec:
+  accessModes: ["ReadWriteOnce"]
+  {{- with .Values.backend.uploads.storageClass }}
+  storageClassName: {{ . }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.backend.uploads.size }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullname }}-backend
+  labels:
+    {{- include "readaloud.labels" . | nindent 4 }}
+    app.kubernetes.io/name: {{ include "readaloud.name" . }}-backend
+spec:
+  {{- if not .Values.backend.autoscaling.enabled }}
+  replicas: {{ .Values.backend.replicaCount }}
+  {{- end }}
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      {{- include "readaloud.backendSelector" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "readaloud.backendSelector" . | nindent 8 }}
+      annotations:
+        # Roll pods when config or secrets change.
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+      initContainers:
+        - name: wait-for-db
+          image: {{ .Values.postgres.image }}
+          command: ["sh", "-c", "until pg_isready -h \"$POSTGRES_HOST\" -U \"$POSTGRES_USER\"; do echo waiting for db; sleep 2; done"]
+          envFrom:
+            - configMapRef:
+                name: {{ $fullname }}-config
+        - name: migrate
+          image: "{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag }}"
+          imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
+          command: ["flask", "db", "upgrade"]
+          envFrom:
+            - configMapRef:
+                name: {{ $fullname }}-config
+          env:
+            {{- include "readaloud.backendEnv" . | nindent 12 }}
+      containers:
+        - name: backend
+          image: "{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag }}"
+          imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.backend.port }}
+          envFrom:
+            - configMapRef:
+                name: {{ $fullname }}-config
+          env:
+            {{- include "readaloud.backendEnv" . | nindent 12 }}
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 3
+            failureThreshold: 20
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 5
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.backend.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: uploads
+              mountPath: /data/uploads
+      volumes:
+        - name: uploads
+          persistentVolumeClaim:
+            claimName: {{ $fullname }}-uploads
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}-backend
+  labels:
+    {{- include "readaloud.labels" . | nindent 4 }}
+    app.kubernetes.io/name: {{ include "readaloud.name" . }}-backend
+spec:
+  selector:
+    {{- include "readaloud.backendSelector" . | nindent 4 }}
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+{{- if .Values.backend.autoscaling.enabled }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ $fullname }}-backend
+  labels:
+    {{- include "readaloud.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ $fullname }}-backend
+  minReplicas: {{ .Values.backend.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.backend.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.backend.autoscaling.targetCPUUtilizationPercentage }}
+{{- end }}

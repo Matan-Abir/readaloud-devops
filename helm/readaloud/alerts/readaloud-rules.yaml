@@ -1,0 +1,40 @@
+# Single source of truth for alert rules: embedded in the Helm PrometheusRule and
+# loaded directly by the docker-compose Prometheus (compose/prometheus.yml).
+groups:
+  - name: readaloud.rules
+    rules:
+      - alert: ReadAloudBackendDown
+        expr: up{job=~".*readaloud.*"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "ReadAloud backend target {{ $labels.instance }} is down"
+          description: "Prometheus cannot scrape the backend for 1 minute. See docs/RUNBOOK.md#backend-down."
+      - alert: ReadAloudHighErrorRate
+        expr: |
+          sum(rate(flask_http_request_total{status=~"5.."}[5m]))
+            / clamp_min(sum(rate(flask_http_request_total[5m])), 1e-9) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "More than 5% of API requests are failing with 5xx"
+          description: "5xx ratio is {{ $value | humanizePercentage }}. See docs/RUNBOOK.md#high-error-rate."
+      - alert: ReadAloudHighLatency
+        expr: |
+          histogram_quantile(0.95, sum by (le) (rate(flask_http_request_duration_seconds_bucket[5m]))) > 2
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "p95 API latency above 2s"
+          description: "p95 latency is {{ $value | humanizeDuration }}. See docs/RUNBOOK.md#high-latency."
+      - alert: ReadAloudLLMFailures
+        expr: sum(increase(readaloud_llm_requests_total{status!="ok"}[15m])) > 5
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "LLM (Gemini) calls are failing"
+          description: "{{ $value }} failed LLM calls in 15 minutes. See docs/RUNBOOK.md#llm-failures."

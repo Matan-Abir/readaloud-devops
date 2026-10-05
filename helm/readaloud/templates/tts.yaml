@@ -1,0 +1,71 @@
+{{- if .Values.tts.enabled }}
+{{- $fullname := include "readaloud.fullname" . -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullname }}-tts
+  labels:
+    {{- include "readaloud.labels" . | nindent 4 }}
+    app.kubernetes.io/name: {{ include "readaloud.name" . }}-tts
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "readaloud.name" . }}-tts
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "readaloud.name" . }}-tts
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+      containers:
+        - name: tts
+          image: "{{ .Values.tts.image.repository }}:{{ .Values.tts.image.tag }}"
+          imagePullPolicy: {{ .Values.tts.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.tts.port }}
+          startupProbe:
+            httpGet:
+              path: /info
+              port: http
+            periodSeconds: 3
+            failureThreshold: 30
+          livenessProbe:
+            httpGet:
+              path: /info
+              port: http
+            periodSeconds: 15
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /info
+              port: http
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.tts.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}-tts
+  labels:
+    {{- include "readaloud.labels" . | nindent 4 }}
+    app.kubernetes.io/name: {{ include "readaloud.name" . }}-tts
+spec:
+  selector:
+    app.kubernetes.io/name: {{ include "readaloud.name" . }}-tts
+    app.kubernetes.io/instance: {{ .Release.Name }}
+  ports:
+    - name: http
+      port: {{ .Values.tts.port }}
+      targetPort: http
+{{- end }}

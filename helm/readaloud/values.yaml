@@ -1,0 +1,88 @@
+# Default values for the ReadAloud chart. Override per environment with -f or --set.
+
+backend:
+  image:
+    repository: readaloud-backend
+    tag: latest
+    # IfNotPresent works with `minikube image load`; use Always with a registry + mutable tags.
+    pullPolicy: IfNotPresent
+  replicaCount: 2
+  port: 8000
+  resources:
+    requests:
+      cpu: 100m
+      memory: 192Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 70
+  uploads:
+    # ReadWriteOnce is fine on single-node Minikube; use RWX storage on a multi-node cluster.
+    size: 2Gi
+    storageClass: ""
+
+# Natural-voice TTS (Piper). The backend proxies sentences to it; when it is
+# disabled or down, the app uses the phone/browser voice instead.
+tts:
+  enabled: true
+  image:
+    repository: readaloud-tts
+    tag: latest
+    pullPolicy: IfNotPresent
+  port: 5000
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 768Mi
+
+# Non-secret configuration -> ConfigMap
+config:
+  GEMINI_MODEL: gemini-flash-latest
+  MAX_UPLOAD_MB: "50"
+  LLM_CONTEXT_CHARS: "60000"
+  TTS_CHUNK_CHARS: "1500"
+
+# Secrets -> Secret. Never put real values in git: pass them with
+#   --set-string secrets.jwtSecretKey=... --set-string secrets.geminiApiKey=...
+# or point existingSecret at a Secret you created with kubectl.
+secrets:
+  existingSecret: ""
+  jwtSecretKey: ""
+  geminiApiKey: ""
+  postgresPassword: ""
+
+postgres:
+  enabled: true
+  image: postgres:15-alpine
+  database: readaloud
+  user: readaloud
+  storage:
+    size: 1Gi
+    storageClass: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+ingress:
+  enabled: true
+  className: nginx
+  host: readaloud.local
+  tls: false
+
+monitoring:
+  # Requires the Prometheus Operator CRDs (kube-prometheus-stack, installed by Terraform).
+  serviceMonitor: true
+  prometheusRule: true
+  # ConfigMap picked up by the Grafana dashboard sidecar.
+  grafanaDashboard: true

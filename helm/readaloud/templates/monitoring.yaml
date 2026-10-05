@@ -1,0 +1,43 @@
+{{- $fullname := include "readaloud.fullname" . -}}
+{{- if .Values.monitoring.serviceMonitor }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ $fullname }}-backend
+  labels:
+    {{- include "readaloud.labels" . | nindent 4 }}
+    release: kube-prometheus-stack
+spec:
+  selector:
+    matchLabels:
+      {{- include "readaloud.backendSelector" . | nindent 6 }}
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s
+{{- end }}
+{{- if .Values.monitoring.prometheusRule }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ $fullname }}-alerts
+  labels:
+    {{- include "readaloud.labels" . | nindent 4 }}
+    release: kube-prometheus-stack
+spec:
+  {{- .Files.Get "alerts/readaloud-rules.yaml" | nindent 2 }}
+{{- end }}
+{{- if .Values.monitoring.grafanaDashboard }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $fullname }}-dashboard
+  labels:
+    {{- include "readaloud.labels" . | nindent 4 }}
+    grafana_dashboard: "1"
+data:
+  readaloud.json: |-
+{{ .Files.Get "dashboards/readaloud.json" | indent 4 }}
+{{- end }}
