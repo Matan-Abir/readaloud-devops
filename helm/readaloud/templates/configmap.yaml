@@ -9,6 +9,7 @@ data:
   POSTGRES_HOST: {{ include "readaloud.postgresHost" . | quote }}
   POSTGRES_DB: {{ .Values.postgres.database | quote }}
   POSTGRES_USER: {{ .Values.postgres.user | quote }}
+  PIPER_URL: {{ if .Values.tts.enabled }}{{ printf "http://%s-tts:%v" (include "readaloud.fullname" .) .Values.tts.port | quote }}{{ else }}""{{ end }}
   {{- range $k, $v := .Values.config }}
   {{ $k }}: {{ $v | quote }}
   {{- end }}

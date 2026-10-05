@@ -32,6 +32,10 @@ APP_DIR=../../readaloud-app docker compose up -d --build
 ../scripts/smoke_test.sh            # register, login, upload PDF, TTS chunks, metrics
 ```
 
+The stack includes the Piper natural-voice container (`tts`); its first build
+downloads the voice model (en_US-lessac-medium, ~60 MB). The Grafana dashboard
+has a panel for its sentences/s and latency.
+
 | What | URL |
 |------|-----|
 | API health / readiness | http://localhost:8000/healthz, http://localhost:8000/readyz |
@@ -53,6 +57,7 @@ The dashboard JSON and alert rules are shared with the Kubernetes path
 cd terraform && cp terraform.tfvars.example terraform.tfvars
 terraform init && terraform apply     # Minikube + kube-prometheus-stack + Loki/Promtail
 minikube -p readaloud image build -t readaloud-backend:latest ../../readaloud-app/backend
+minikube -p readaloud image build -t readaloud-tts:latest ../../readaloud-app/tts
 helm upgrade --install readaloud ../helm/readaloud -n readaloud \
   --set-string secrets.geminiApiKey="$GEMINI_API_KEY"
 ```

@@ -25,6 +25,23 @@ backend:
     size: 2Gi
     storageClass: ""
 
+# Natural-voice TTS (Piper). The backend proxies sentences to it; when it is
+# disabled or down, the app uses the phone/browser voice instead.
+tts:
+  enabled: true
+  image:
+    repository: readaloud-tts
+    tag: latest
+    pullPolicy: IfNotPresent
+  port: 5000
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 768Mi
+
 # Non-secret configuration -> ConfigMap
 config:
   GEMINI_MODEL: gemini-flash-latest
