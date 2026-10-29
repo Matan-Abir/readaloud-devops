@@ -1,0 +1,52 @@
+# Jenkins configuration as code. Values like ${JENKINS_ADMIN_PASSWORD} come from
+# the environment (see docker-compose.yml and .env); ${readFile:...} reads the
+# SonarQube token that the sonar-init container wrote.
+jenkins:
+  systemMessage: "ReadAloud CI - pipeline defined in readaloud-devops/Jenkinsfile"
+  numExecutors: 2
+  securityRealm:
+    local:
+      allowsSignup: false
+      users:
+        - id: admin
+          password: ${JENKINS_ADMIN_PASSWORD}
+  authorizationStrategy:
+    loggedInUsersCanDoAnything:
+      allowAnonymousRead: false
+
+unclassified:
+  location:
+    url: http://localhost:8081/
+
+credentials:
+  system:
+    domainCredentials:
+      - credentials:
+          - string:
+              id: sonar-token
+              scope: GLOBAL
+              description: SonarQube analysis token (created by sonar-init)
+              secret: ${readFile:/sonar-token/token}
+          - usernamePassword:
+              id: ghcr
+              scope: GLOBAL
+              description: GitHub Container Registry (user + personal access token with write:packages)
+              username: ${GHCR_USER:-none}
+              password: ${GHCR_TOKEN:-none}
+
+jobs:
+  - script: |
+      pipelineJob('readaloud') {
+        description('Lint, test, SAST, security scans and image build for readaloud-app')
+        definition {
+          cpsScm {
+            scm {
+              git {
+                remote { url('${DEVOPS_REPO}') }
+                branch('*/${DEVOPS_BRANCH}')
+              }
+            }
+            scriptPath('Jenkinsfile')
+          }
+        }
+      }

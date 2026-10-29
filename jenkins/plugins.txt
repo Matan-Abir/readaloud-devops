@@ -1,0 +1,17 @@
+# Pipeline basics
+workflow-aggregator
+pipeline-graph-view
+pipeline-stage-view
+git
+timestamper
+ws-cleanup
+# Run stages inside tool containers (agent { docker { ... } })
+docker-workflow
+# Secrets as environment variables (withCredentials)
+credentials-binding
+# Test and coverage reports
+junit
+coverage
+# Configuration as code: users, credentials and the job are defined in casc.yaml
+configuration-as-code
+job-dsl
