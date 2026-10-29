@@ -1,0 +1,5 @@
+# staging: production-like (two backend pods), its own hostname.
+backend:
+  replicaCount: 2
+ingress:
+  host: staging.readaloud.local

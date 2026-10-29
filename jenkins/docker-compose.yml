@@ -1,0 +1,64 @@
+# CI tools for ReadAloud, run on your PC only when you need them:
+#   docker compose up -d --build     Jenkins on http://localhost:8081, SonarQube on http://localhost:9000
+#   docker compose down              stop (data is kept in volumes)
+services:
+  sonarqube:
+    image: sonarqube:26.10.0.133078-community
+    environment:
+      # Dev mode: skip the Elasticsearch kernel checks (vm.max_map_count) that
+      # Docker Desktop does not let you set easily.
+      SONAR_ES_BOOTSTRAP_CHECKS_DISABLE: "true"
+    ports:
+      - "9000:9000"
+    volumes:
+      - sonar-data:/opt/sonarqube/data
+      - sonar-extensions:/opt/sonarqube/extensions
+
+  # One-shot: waits for SonarQube, sets the admin password, creates the token
+  # Jenkins uses, and writes it to a shared volume. Safe to run again.
+  sonar-init:
+    image: curlimages/curl:8.23.0
+    environment:
+      SONAR_URL: http://sonarqube:9000
+      SONAR_ADMIN_PASSWORD: ${SONAR_ADMIN_PASSWORD:-ReadAloud-Sonar-2026!}
+    volumes:
+      - ./sonar-init.sh:/sonar-init.sh:ro
+      - sonar-token:/sonar-token
+    user: root
+    entrypoint: ["sh", "/sonar-init.sh"]
+    depends_on:
+      - sonarqube
+
+  jenkins:
+    build: .
+    image: readaloud-jenkins:local
+    # Root so the pipeline can use the Docker socket on Docker Desktop.
+    # Fine for a local CI box; never expose this Jenkins to the internet.
+    user: root
+    environment:
+      JENKINS_ADMIN_PASSWORD: ${JENKINS_ADMIN_PASSWORD:-admin}
+      DEVOPS_REPO: ${DEVOPS_REPO:-https://github.com/Matan-Abir/readaloud-devops.git}
+      DEVOPS_BRANCH: ${DEVOPS_BRANCH:-master}
+      GHCR_USER: ${GHCR_USER:-none}
+      GHCR_TOKEN: ${GHCR_TOKEN:-none}
+    ports:
+      - "8081:8080"
+    volumes:
+      - jenkins-home:/var/jenkins_home
+      - sonar-token:/sonar-token:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      sonar-init:
+        condition: service_completed_successfully
+
+# A fixed network name, so pipeline stages that run in their own containers can
+# join it (docker agent args: --network ci) and reach http://sonarqube:9000.
+networks:
+  default:
+    name: ci
+
+volumes:
+  jenkins-home:
+  sonar-data:
+  sonar-extensions:
+  sonar-token:

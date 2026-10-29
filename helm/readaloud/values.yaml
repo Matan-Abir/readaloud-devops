@@ -1,0 +1,77 @@
+# Default values for the ReadAloud chart. Per-environment overrides live in
+# values-<env>.yaml (e.g. -f values-dev.yaml).
+
+backend:
+  image:
+    repository: readaloud-backend
+    tag: local
+    # IfNotPresent works with `minikube image load`; use Always with a registry + mutable tags.
+    pullPolicy: IfNotPresent
+  replicaCount: 2
+  port: 8000
+  # Piper keeps the voice model in memory in each gunicorn worker, and speech
+  # synthesis is CPU-bound, so the backend gets more than a plain Flask API.
+  resources:
+    requests:
+      cpu: 250m
+      memory: 384Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+  uploads:
+    # ReadWriteOnce is fine on single-node Minikube; use RWX storage on a multi-node cluster.
+    size: 2Gi
+    storageClass: ""
+
+web:
+  image:
+    repository: readaloud-web
+    tag: local
+    pullPolicy: IfNotPresent
+  replicaCount: 1
+  port: 8080
+  resources:
+    requests:
+      cpu: 25m
+      memory: 32Mi
+    limits:
+      cpu: 250m
+      memory: 128Mi
+
+# Non-secret configuration -> ConfigMap
+config:
+  GEMINI_MODEL: gemini-flash-latest
+  MAX_UPLOAD_MB: "50"
+  LLM_CONTEXT_CHARS: "60000"
+  TTS_CHUNK_CHARS: "1500"
+
+# Secrets -> Secret. Never put real values in git: pass them with
+#   --set-string secrets.geminiApiKey=...
+# or point existingSecret at a Secret you created with kubectl.
+# Empty JWT / Postgres passwords are generated once and kept on upgrades.
+secrets:
+  existingSecret: ""
+  jwtSecretKey: ""
+  geminiApiKey: ""
+  postgresPassword: ""
+
+postgres:
+  enabled: true
+  image: postgres:15.19-alpine
+  database: readaloud
+  user: readaloud
+  storage:
+    size: 1Gi
+    storageClass: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+ingress:
+  enabled: true
+  className: nginx
+  host: readaloud.local
