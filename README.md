@@ -8,9 +8,9 @@ IaC, Kubernetes/Helm, CI/CD and monitoring for the ReadAloud app (see sibling `a
 |---|-------|-------------|--------|
 | 1 | Backend MVP + Dockerfile + compose (app repo) | 1, 8 | done, verified on Postgres + Gemini |
 | 2 | Flutter Android client (login, upload, list, listen, summarize, ask) | app | done, APK builds, needs on-device test |
-| 3 | Minikube via Terraform module (`terraform/`) | 2 | todo |
-| 4 | Helm chart: backend, postgres, configmap, secret, ingress, probes, limits (`helm/readaloud`) | 3, 8 | todo |
-| 5 | Jenkinsfile: lint, test, sonar, trivy, gitleaks, build, deploy, verify (+ GitHub Actions) | 4, 6 | todo |
+| 3 | Minikube via Terraform module (`terraform/`) | 2 | cluster + dev/staging namespaces; remote state and workspaces todo |
+| 4 | Helm chart: backend, web, postgres, configmap, secret, ingress, probes, limits (`helm/readaloud`) | 3, 8 | done, see `docs/KUBERNETES.md` |
+| 5 | Jenkinsfile: lint, test, sonar, trivy, gitleaks, build, deploy, verify (+ GitHub Actions) | 4, 6 | stages 1-5 done (`Jenkinsfile`, `jenkins/`); deploy + verify todo |
 | 6 | Prometheus + Alertmanager + Grafana dashboards (`monitoring/`) | 5 | todo |
 | 7 | Loki + Promtail (`logging/`) | 9 | todo |
 | 8 | ADRs, deployment steps, runbooks (`docs/`) | 10 | todo |
