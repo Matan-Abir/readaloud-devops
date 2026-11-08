@@ -92,8 +92,10 @@ resource "helm_release" "kube_prometheus_stack" {
     yamlencode({ alertmanager = { config = local.alertmanager_config } }),
   ]
 
+  # type = "string": otherwise Helm parses an all-digit password as a number and
+  # Grafana's secret template fails (b64enc: expected string; got int64).
   set_sensitive = [
-    { name = "grafana.adminPassword", value = var.grafana_admin_password },
+    { name = "grafana.adminPassword", value = var.grafana_admin_password, type = "string" },
   ]
 }
 
