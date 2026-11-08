@@ -58,7 +58,7 @@ Newman API tests, Terraform remote state + workspaces.
 - Jenkins + SonarQube run **outside** the cluster in Docker Compose, started only
   when needed (RAM).
 - Git workflow so far: feature branches merged into `master` with merge commits.
-- LLM is Gemini (`GEMINI_API_KEY`); default model `gemini-2.5-flash-lite` (`GEMINI_MODEL` in the chart config; the old `gemini-flash-latest` alias took 30s+ per call).
+- LLM is Gemini (`GEMINI_API_KEY`); default model `gemini-3.5-flash-lite` (`GEMINI_MODEL` in the chart config; the old `gemini-flash-latest` alias took 30s+ per call).
 - TTS happens on the phone, not the server (server only returns text chunks).
 
 ## 6. Secrets - important
