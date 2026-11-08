@@ -1,0 +1,69 @@
+# Checks for the DevOps repo on every push and pull request: Terraform, the Helm
+# chart, alert rules, the Jenkins helper scripts and the Newman collection.
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  terraform:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.17.1
+      - name: fmt
+        run: terraform fmt -check -recursive terraform
+      - name: validate (both roots, no backend)
+        run: |
+          for root in platform environments; do
+            terraform -chdir=terraform/$root init -backend=false -input=false
+            terraform -chdir=terraform/$root validate
+          done
+
+  helm:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.22.1
+      - name: lint
+        run: |
+          for env in dev staging prod; do
+            helm lint helm/readaloud -f helm/readaloud/values-$env.yaml
+          done
+      - name: render and validate against the Kubernetes schemas
+        run: |
+          curl -sSL https://github.com/yannh/kubeconform/releases/download/v0.8.0/kubeconform-linux-amd64.tar.gz | tar xz
+          for env in dev staging prod; do
+            helm template readaloud helm/readaloud -n $env -f helm/readaloud/values-$env.yaml \
+              --api-versions monitoring.coreos.com/v1 > rendered-$env.yaml
+            ./kubeconform -strict -summary -ignore-missing-schemas rendered-$env.yaml
+          done
+      - name: alert rules (promtool)
+        run: |
+          python3 - <<'PY'
+          import yaml
+          docs = [d for d in yaml.safe_load_all(open("rendered-staging.yaml")) if d and d.get("kind") == "PrometheusRule"]
+          yaml.safe_dump({"groups": docs[0]["spec"]["groups"]}, open("tests/alerts/rules.yaml", "w"))
+          PY
+          docker run --rm -v "$PWD/tests/alerts:/t" -w /t --entrypoint promtool prom/prometheus:v3.16.0 check rules rules.yaml
+          docker run --rm -v "$PWD/tests/alerts:/t" -w /t --entrypoint promtool prom/prometheus:v3.16.0 test rules rules-test.yaml
+
+  scripts:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck
+        run: shellcheck scripts/*.sh jenkins/sonar-init.sh
+      - name: Grafana dashboard and Newman collection are valid JSON
+        run: |
+          python3 -m json.tool terraform/modules/monitoring/dashboards/readaloud.json > /dev/null
+          python3 -m json.tool tests/api/readaloud.postman_collection.json > /dev/null

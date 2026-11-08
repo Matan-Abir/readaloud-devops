@@ -6,4 +6,6 @@ resource "minikube_cluster" "this" {
   cpus               = var.cpus
   memory             = var.memory
   addons             = var.addons
+  # Docker inside the node: Jenkins loads freshly built images with `docker load`.
+  container_runtime = "docker"
 }

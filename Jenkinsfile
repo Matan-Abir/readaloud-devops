@@ -1,7 +1,14 @@
 // ReadAloud CI/CD pipeline (declarative). Lives in the DevOps repo and builds
 // the app repo, which it checks out into ./app.
-// Stages 1-5 of the course list: Lint, Test, SAST, Security, Build + push.
-// Deploy (Helm), Verify (Newman) and Monitor come next.
+// The eight stages of the course list: 1 Lint, 2 Test, 3 SAST, 4 Security,
+// 5 Build + push, 6 Deploy (Helm: dev, staging, prod after approval), 7 Verify (health checks
+// and Newman API tests), 8 Monitor (Prometheus targets, alerts, Grafana, Loki).
+//
+// Stages 6-8 talk to the Minikube cluster made by terraform/platform. Jenkins
+// runs in Docker next to it, reaches the cluster over Minikube's Docker network
+// (named after the profile, "readaloud") and loads the images it just built
+// straight into the node, so no registry is needed. Untick DEPLOY to stop
+// after stage 5. The shell steps live in scripts/ so they can be run by hand.
 pipeline {
   agent any
 
@@ -18,10 +25,22 @@ pipeline {
     string(name: 'APP_BRANCH', defaultValue: 'master', description: 'App branch to build')
     booleanParam(name: 'PUSH_IMAGES', defaultValue: false,
                  description: 'Push images to GHCR (needs the ghcr credential with a real token)')
+    booleanParam(name: 'DEPLOY', defaultValue: true,
+                 description: 'Stages 6-8: deploy to Minikube, run the API tests, check monitoring')
+    booleanParam(name: 'PROMOTE_TO_STAGING', defaultValue: true,
+                 description: 'After dev passes its tests, deploy the same images to staging')
+    booleanParam(name: 'PROMOTE_TO_PROD', defaultValue: false,
+                 description: 'After staging passes, ask for approval and deploy to prod (needs terraform workspace prod; ~1.5 GB more memory)')
+    string(name: 'CLUSTER', defaultValue: 'readaloud', description: 'Minikube profile name')
   }
 
   environment {
     REGISTRY = 'ghcr.io/matan-abir'
+    // Cluster access for stages 6-8, written by scripts/cluster-access.sh.
+    KUBECONFIG = "${WORKSPACE}/.kube/config"
+    HELM_CACHE_HOME = "${WORKSPACE}/.helm/cache"
+    HELM_CONFIG_HOME = "${WORKSPACE}/.helm/config"
+    HELM_DATA_HOME = "${WORKSPACE}/.helm/data"
   }
 
   stages {
@@ -171,6 +190,133 @@ pipeline {
         }
       }
     }
+
+    stage('Cluster access') {
+      when { expression { params.DEPLOY } }
+      steps {
+        sh './scripts/cluster-access.sh'
+        script { env.NODE_IP = readFile('.node-ip').trim() }
+      }
+    }
+
+    stage('6 Deploy: dev') {
+      when { expression { params.DEPLOY } }
+      agent { docker { image 'dtzar/helm-kubectl:4.3.0'; args "--entrypoint= --network ${params.CLUSTER}"; reuseNode true } }
+      steps {
+        withCredentials([string(credentialsId: 'gemini-api-key', variable: 'GEMINI_API_KEY')]) {
+          sh 'DEPLOY_ENV=dev ./scripts/deploy.sh'
+        }
+      }
+    }
+
+    stage('7 Verify: dev') {
+      when { expression { params.DEPLOY } }
+      stages {
+        stage('dev: health checks') {
+          agent { docker { image 'dtzar/helm-kubectl:4.3.0'; args "--entrypoint= --network ${params.CLUSTER}"; reuseNode true } }
+          steps {
+            sh 'DEPLOY_ENV=dev ./scripts/health-check.sh'
+          }
+        }
+        stage('dev: API tests (Newman)') {
+          agent { docker { image 'postman/newman:6.1.3-alpine'; args "--entrypoint= --network ${params.CLUSTER}"; reuseNode true } }
+          steps {
+            sh 'DEPLOY_ENV=dev HOSTNAME_UNDER_TEST=readaloud.local ./scripts/api-tests.sh'
+          }
+          post { always { junit 'newman-dev.xml' } }
+        }
+      }
+    }
+
+    stage('6 Deploy: staging') {
+      when { expression { params.DEPLOY && params.PROMOTE_TO_STAGING } }
+      agent { docker { image 'dtzar/helm-kubectl:4.3.0'; args "--entrypoint= --network ${params.CLUSTER}"; reuseNode true } }
+      steps {
+        withCredentials([string(credentialsId: 'gemini-api-key', variable: 'GEMINI_API_KEY')]) {
+          sh 'DEPLOY_ENV=staging ./scripts/deploy.sh'
+        }
+      }
+    }
+
+    stage('7 Verify: staging') {
+      when { expression { params.DEPLOY && params.PROMOTE_TO_STAGING } }
+      stages {
+        stage('staging: health checks') {
+          agent { docker { image 'dtzar/helm-kubectl:4.3.0'; args "--entrypoint= --network ${params.CLUSTER}"; reuseNode true } }
+          steps {
+            sh 'DEPLOY_ENV=staging ./scripts/health-check.sh'
+          }
+        }
+        stage('staging: API tests (Newman)') {
+          agent { docker { image 'postman/newman:6.1.3-alpine'; args "--entrypoint= --network ${params.CLUSTER}"; reuseNode true } }
+          steps {
+            sh 'DEPLOY_ENV=staging HOSTNAME_UNDER_TEST=staging.readaloud.local ./scripts/api-tests.sh'
+          }
+          post { always { junit 'newman-staging.xml' } }
+        }
+      }
+    }
+
+    stage('6 Deploy: prod') {
+      when { expression { params.DEPLOY && params.PROMOTE_TO_STAGING && params.PROMOTE_TO_PROD } }
+      stages {
+        stage('prod: approval') {
+          steps {
+            // A person signs off before production; nobody answers in 30 min = abort.
+            timeout(time: 30, unit: 'MINUTES') {
+              input message: "Deploy ${env.IMAGE_TAG} to prod? It passed dev and staging.", ok: 'Deploy to prod'
+            }
+          }
+        }
+        stage('prod: helm upgrade') {
+          agent { docker { image 'dtzar/helm-kubectl:4.3.0'; args "--entrypoint= --network ${params.CLUSTER}"; reuseNode true } }
+          steps {
+            withCredentials([string(credentialsId: 'gemini-api-key', variable: 'GEMINI_API_KEY')]) {
+              sh 'DEPLOY_ENV=prod ./scripts/deploy.sh'
+            }
+          }
+        }
+      }
+    }
+
+    stage('7 Verify: prod') {
+      when { expression { params.DEPLOY && params.PROMOTE_TO_STAGING && params.PROMOTE_TO_PROD } }
+      stages {
+        stage('prod: health checks') {
+          agent { docker { image 'dtzar/helm-kubectl:4.3.0'; args "--entrypoint= --network ${params.CLUSTER}"; reuseNode true } }
+          steps {
+            sh 'DEPLOY_ENV=prod ./scripts/health-check.sh'
+          }
+        }
+        stage('prod: API tests (Newman)') {
+          agent { docker { image 'postman/newman:6.1.3-alpine'; args "--entrypoint= --network ${params.CLUSTER}"; reuseNode true } }
+          steps {
+            sh 'DEPLOY_ENV=prod HOSTNAME_UNDER_TEST=prod.readaloud.local ./scripts/api-tests.sh'
+          }
+          post { always { junit 'newman-prod.xml' } }
+        }
+      }
+    }
+
+    stage('8 Monitor') {
+      when { expression { params.DEPLOY } }
+      agent { docker { image 'dtzar/helm-kubectl:4.3.0'; args "--entrypoint= --network ${params.CLUSTER}"; reuseNode true } }
+      steps {
+        script {
+          def envs = 'dev'
+          if (params.PROMOTE_TO_STAGING) { envs += ' staging' }
+          if (params.PROMOTE_TO_STAGING && params.PROMOTE_TO_PROD) { envs += ' prod' }
+          // Exit code 3 = monitoring works but a ReadAloud alert is firing:
+          // the build goes yellow (unstable) instead of red.
+          def rc = sh(script: "DEPLOY_ENVS='${envs}' ./scripts/monitor-check.sh", returnStatus: true)
+          if (rc == 3) {
+            unstable('A ReadAloud alert is firing, see the log above')
+          } else if (rc != 0) {
+            error("Monitoring check failed (exit ${rc})")
+          }
+        }
+      }
+    }
   }
 
   post {
@@ -178,7 +324,7 @@ pipeline {
       echo "Images: $REGISTRY/readaloud-backend:$IMAGE_TAG and $REGISTRY/readaloud-web:$IMAGE_TAG"
     }
     always {
-      sh 'docker logout ghcr.io || true'
+      sh 'docker logout ghcr.io || true; rm -rf .kube .node-ip'
     }
   }
 }

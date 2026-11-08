@@ -1,0 +1,2 @@
+ReadAloud API test. This short text checks the deployed app end to end.
+It is uploaded by the Newman collection, read back in chunks, and deleted again.

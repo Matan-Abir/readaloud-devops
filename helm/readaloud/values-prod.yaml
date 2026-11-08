@@ -1,0 +1,6 @@
+# prod: same shape as staging. Not deployed by Jenkins by default (a laptop
+# cluster has no room for three copies); see docs/DEPLOYMENT.md.
+backend:
+  replicaCount: 2
+ingress:
+  host: prod.readaloud.local

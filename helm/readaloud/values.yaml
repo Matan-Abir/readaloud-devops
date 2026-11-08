@@ -75,3 +75,10 @@ ingress:
   enabled: true
   className: nginx
   host: readaloud.local
+
+# ServiceMonitor + alert rules for the Prometheus from kube-prometheus-stack.
+# Skipped automatically when the monitoring CRDs are not installed.
+monitoring:
+  enabled: true
+  scrapeInterval: 15s
+  runbookUrl: https://github.com/Matan-Abir/readaloud-devops/blob/master/docs/RUNBOOK.md

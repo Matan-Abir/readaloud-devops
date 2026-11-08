@@ -1,0 +1,11 @@
+# Promtail runs on the node, tails every container's log file and sends the
+# lines to Loki with namespace, pod, container and app labels.
+config:
+  clients:
+    - url: http://loki.${namespace}.svc:3100/loki/api/v1/push
+resources:
+  requests:
+    cpu: 20m
+    memory: 48Mi
+  limits:
+    memory: 128Mi

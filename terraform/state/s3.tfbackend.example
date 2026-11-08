@@ -1,0 +1,11 @@
+# Optional: real AWS S3 instead of the local Postgres (needs an AWS account).
+# 1. Create a private, versioned bucket, e.g. readaloud-tfstate-<your-name>.
+# 2. In platform/versions.tf and environments/versions.tf change
+#    backend "pg" { schema_name = ... }  to  backend "s3" { key = "<root>/terraform.tfstate" }
+# 3. Copy this file to s3.tfbackend, fill it in, and run
+#    terraform init -migrate-state -backend-config=../state/s3.tfbackend
+# Credentials come from `aws configure` (AWS_PROFILE), never from this file.
+bucket       = "readaloud-tfstate-CHANGE-ME"
+region       = "eu-central-1"
+encrypt      = true
+use_lockfile = true

@@ -27,6 +27,11 @@ credentials:
               scope: GLOBAL
               description: SonarQube analysis token (created by sonar-init)
               secret: ${readFile:/sonar-token/token}
+          - string:
+              id: gemini-api-key
+              scope: GLOBAL
+              description: Gemini API key the deploy stage puts in the app's Secret ("none" = keep what's there)
+              secret: ${GEMINI_API_KEY:-none}
           - usernamePassword:
               id: ghcr
               scope: GLOBAL
@@ -37,7 +42,7 @@ credentials:
 jobs:
   - script: |
       pipelineJob('readaloud') {
-        description('Lint, test, SAST, security scans and image build for readaloud-app')
+        description('ReadAloud: lint, test, SAST, security scans, image build, Helm deploy to dev and staging, API tests, monitoring check')
         definition {
           cpsScm {
             scm {

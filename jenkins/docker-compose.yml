@@ -41,6 +41,7 @@ services:
       DEVOPS_BRANCH: ${DEVOPS_BRANCH:-master}
       GHCR_USER: ${GHCR_USER:-none}
       GHCR_TOKEN: ${GHCR_TOKEN:-none}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-none}
     ports:
       - "8081:8080"
     volumes:

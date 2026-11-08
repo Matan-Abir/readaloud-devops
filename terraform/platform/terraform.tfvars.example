@@ -1,0 +1,21 @@
+# Copy to terraform.tfvars (gitignored) and adjust for your machine.
+cluster_name = "readaloud"
+driver       = "docker"
+cpus         = 4
+memory       = "6144mb"
+
+# Grafana login is admin / this password.
+# grafana_admin_password = "pick-one"
+
+# Alerts to Slack (optional): Slack app > Incoming Webhooks > Add to channel.
+# slack_webhook_url = "https://hooks.slack.com/services/..."
+# slack_channel     = "#readaloud-alerts"
+
+# Alerts by email (optional). Gmail: Google account > Security > App passwords.
+# alert_email = {
+#   to            = "you@gmail.com"
+#   from          = "you@gmail.com"
+#   smarthost     = "smtp.gmail.com:587"
+#   auth_username = "you@gmail.com"
+#   auth_password = "your-16-letter-app-password"
+# }

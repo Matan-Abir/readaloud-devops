@@ -1,0 +1,27 @@
+# Remote Terraform state for ReadAloud: a small Postgres outside the cluster
+# that Terraform manages (state must outlive `terraform destroy`).
+# The pg backend keeps one state per workspace and locks it during
+# plan/apply, so two runs can't corrupt it.
+#   docker compose up -d      start (data kept in the tfstate-data volume)
+#   docker compose down       stop, state is kept
+services:
+  tfstate:
+    image: postgres:15.19-alpine
+    container_name: readaloud-tfstate
+    environment:
+      POSTGRES_USER: tfstate
+      # Local-only password; the port is bound to 127.0.0.1.
+      POSTGRES_PASSWORD: tfstate
+      POSTGRES_DB: tfstate
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - tfstate-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tfstate"]
+      interval: 5s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  tfstate-data:
