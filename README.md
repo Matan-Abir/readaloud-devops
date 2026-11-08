@@ -8,10 +8,10 @@ IaC, Kubernetes/Helm, CI/CD and monitoring for the ReadAloud app (see sibling `a
 |------|------|
 | `Jenkinsfile`, `jenkins/`, `scripts/` | Jenkins as code and the 8-stage pipeline (lint, test, SAST, security, build, deploy, verify, monitor) |
 | `helm/readaloud` | the app chart: backend, web, Postgres, Ingress, probes, limits, ServiceMonitor, alert rules |
-| `terraform/` | remote state, the platform (Minikube + monitoring/logging), environments as workspaces |
+| `terraform/` | remote state, the platform (Minikube + monitoring/logging), environments as workspaces, and `cloud` + `cloud-platform` for the AWS demo (EC2 + k3s) |
 | `tests/api` | Newman API tests (stage 7) |
 | `tests/alerts` | promtool tests for the alert rules |
-| `docs/` | [architecture](docs/ARCHITECTURE.md), [requirements map](docs/REQUIREMENTS_MAP.md), [ADRs](docs/adr), [deployment](docs/DEPLOYMENT.md), [runbook](docs/RUNBOOK.md), [demo script](docs/DEMO.md) |
+| `docs/` | [architecture](docs/ARCHITECTURE.md), [requirements map](docs/REQUIREMENTS_MAP.md), [ADRs](docs/adr), [deployment](docs/DEPLOYMENT.md), [runbook](docs/RUNBOOK.md), [demo script](docs/DEMO.md), [AWS demo](docs/CLOUD.md) |
 
 Start with [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
@@ -20,7 +20,7 @@ Start with [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 | # | Requirement | Where |
 |---|-------------|-------|
 | 1 | Docker multi-stage builds | app repo Dockerfiles |
-| 2 | Terraform modules | `terraform/modules/*`, roots `platform`, `environments` |
+| 2 | Terraform modules | `terraform/modules/*`, roots `platform`, `environments`, `cloud` (AWS), `cloud-platform` |
 | 3 | Helm, ConfigMaps, Secrets, Ingress | `helm/readaloud` |
 | 4 | Jenkins declarative pipeline + GitHub Actions | `Jenkinsfile`, `.github/workflows` here and in the app repo |
 | 5 | Prometheus + Grafana, custom metrics | `terraform/modules/monitoring`, chart ServiceMonitor, `readaloud_*` metrics |

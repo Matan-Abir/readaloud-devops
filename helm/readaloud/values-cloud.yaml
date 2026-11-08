@@ -1,0 +1,31 @@
+# AWS (k3s on one EC2 instance), layered on top of values-prod.yaml:
+#   helm upgrade --install readaloud helm/readaloud -n prod \
+#     -f helm/readaloud/values-prod.yaml -f helm/readaloud/values-cloud.yaml \
+#     --set-string ingress.host=app.<ip>.nip.io --set-string secrets.geminiApiKey=...
+# The host comes from `terraform -chdir=terraform/cloud output base_domain`.
+
+# Images that GitHub Actions in readaloud-app pushes to GHCR on every merge to
+# master (public packages, so the cluster needs no pull secret). `latest` +
+# Always = every rollout pulls the newest master build; pin a commit SHA tag
+# for a reproducible release.
+backend:
+  image:
+    repository: ghcr.io/matan-abir/readaloud-backend
+    tag: latest
+    pullPolicy: Always
+
+web:
+  image:
+    repository: ghcr.io/matan-abir/readaloud-web
+    tag: latest
+    pullPolicy: Always
+
+config:
+  GEMINI_MODEL: gemini-3.5-flash-lite
+
+# k3s ships Traefik, not ingress-nginx. Traefik ignores the chart's nginx.*
+# annotations; it has no body size limit and doesn't time out waiting for the
+# backend, so slow Gemini answers work. (It does give a client 60 s to send a
+# request, plenty for a PDF upload.)
+ingress:
+  className: traefik

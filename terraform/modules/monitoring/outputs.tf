@@ -3,6 +3,6 @@ output "namespace" {
 }
 
 output "urls" {
-  description = "Monitoring UIs (need the hosts-file line and `minikube tunnel`)"
-  value       = { for k, h in local.hosts : k => "http://${h}" }
+  description = "Monitoring UIs that have an Ingress (on Minikube they need the hosts-file line and `minikube tunnel`)"
+  value       = { for k, h in local.hosts : k => "http://${h}" if var.expose_admin_uis || k == "grafana" }
 }

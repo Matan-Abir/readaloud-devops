@@ -1,0 +1,8 @@
+# Optional. Copy to terraform.tfvars (gitignored) only if a default doesn't fit.
+
+# On a paid AWS plan the same size is also available as:
+# instance_type = "t3.large"
+
+# Your public IP changed (new network, router restart) and SSH or kubectl now
+# times out? Run `terraform apply` again: the default re-detects it. To pin it:
+# admin_cidr = "203.0.113.7/32"
