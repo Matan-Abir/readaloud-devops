@@ -1,0 +1,5 @@
+# Shared backend settings for both roots:
+#   terraform init -backend-config=../state/pg.tfbackend
+# Each root picks its own schema_name in its backend block, so platform and
+# environments state never mix. Workspaces are rows inside a schema.
+conn_str = "postgres://tfstate:tfstate@127.0.0.1:5433/tfstate?sslmode=disable"

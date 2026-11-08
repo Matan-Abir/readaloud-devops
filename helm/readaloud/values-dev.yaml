@@ -1,0 +1,5 @@
+# dev: one backend pod to save memory on a laptop.
+backend:
+  replicaCount: 1
+ingress:
+  host: readaloud.local

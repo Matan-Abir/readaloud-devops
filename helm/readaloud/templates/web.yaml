@@ -1,0 +1,67 @@
+{{- $fullname := include "readaloud.fullname" . -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullname }}-web
+  labels:
+    {{- include "readaloud.labels" . | nindent 4 }}
+    app.kubernetes.io/name: {{ include "readaloud.name" . }}-web
+spec:
+  replicas: {{ .Values.web.replicaCount }}
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      {{- include "readaloud.webSelector" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "readaloud.webSelector" . | nindent 8 }}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
+      containers:
+        - name: web
+          image: "{{ .Values.web.image.repository }}:{{ .Values.web.image.tag }}"
+          imagePullPolicy: {{ .Values.web.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.web.port }}
+          env:
+            # nginx in the image also forwards /api here (used when the web
+            # service is reached without the Ingress, e.g. port-forward).
+            - name: BACKEND_HOST
+              value: {{ $fullname }}-backend
+            - name: BACKEND_PORT
+              value: "80"
+          livenessProbe:
+            httpGet:
+              path: /nginx-health
+              port: http
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /nginx-health
+              port: http
+            periodSeconds: 5
+          resources:
+            {{- toYaml .Values.web.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}-web
+  labels:
+    {{- include "readaloud.labels" . | nindent 4 }}
+    app.kubernetes.io/name: {{ include "readaloud.name" . }}-web
+spec:
+  selector:
+    {{- include "readaloud.webSelector" . | nindent 4 }}
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

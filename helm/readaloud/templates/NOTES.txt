@@ -1,0 +1,9 @@
+ReadAloud is deploying to namespace {{ .Release.Namespace }}.
+
+  kubectl get pods -n {{ .Release.Namespace }} -w
+
+{{- if .Values.ingress.enabled }}
+
+Open http://{{ .Values.ingress.host }} once the pods are Ready
+(the hosts file must point {{ .Values.ingress.host }} at 127.0.0.1 and `minikube tunnel` must be running).
+{{- end }}

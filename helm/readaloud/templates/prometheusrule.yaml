@@ -1,0 +1,82 @@
+{{- if and .Values.monitoring.enabled (.Capabilities.APIVersions.Has "monitoring.coreos.com/v1") }}
+{{- $ns := .Release.Namespace -}}
+{{- $sel := printf "namespace=%q, service=%q" $ns (printf "%s-backend" (include "readaloud.fullname" .)) -}}
+# Alert rules for this environment. Prometheus evaluates them; Alertmanager
+# routes the ReadAloud ones to the receiver set in terraform/platform.
+# Every alert links to its section of docs/RUNBOOK.md.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "readaloud.fullname" . }}-alerts
+  labels:
+    {{- include "readaloud.labels" . | nindent 4 }}
+spec:
+  groups:
+    - name: readaloud.{{ $ns }}
+      rules:
+        - alert: ReadAloudBackendDown
+          # absent() also fires when the backend is scaled to 0 (no targets left).
+          expr: sum(up{ {{- $sel -}} }) == 0 or absent(up{ {{- $sel -}} })
+          for: 1m
+          labels:
+            severity: critical
+            namespace: {{ $ns }}
+          annotations:
+            summary: ReadAloud backend in {{ $ns }} is down
+            description: Prometheus has not reached any backend pod in {{ $ns }} for a minute.
+            runbook_url: {{ .Values.monitoring.runbookUrl }}#backend-down
+        - alert: ReadAloudHighErrorRate
+          expr: |
+            sum(rate(flask_http_request_total{namespace="{{ $ns }}", status=~"5.."}[5m]))
+              / clamp_min(sum(rate(flask_http_request_total{namespace="{{ $ns }}"}[5m])), 1e-9) > 0.05
+          for: 5m
+          labels:
+            severity: warning
+            namespace: {{ $ns }}
+          annotations:
+            summary: More than 5% of API requests in {{ $ns }} fail with 5xx
+            description: {{`"5xx ratio is {{ $value | humanizePercentage }}."`}}
+            runbook_url: {{ .Values.monitoring.runbookUrl }}#high-error-rate
+        - alert: ReadAloudSlowAPI
+          # Summary, Ask (Gemini) and speech are slow by nature and have their own alerts.
+          expr: |
+            histogram_quantile(0.95, sum by (le) (rate(flask_http_request_duration_seconds_bucket{
+              namespace="{{ $ns }}", url_rule!~"/api/tts|.*/summarize|.*/ask"}[5m]))) > 2
+          for: 10m
+          labels:
+            severity: warning
+            namespace: {{ $ns }}
+          annotations:
+            summary: p95 API latency in {{ $ns }} is above 2 s
+            description: {{`"p95 latency is {{ $value | humanizeDuration }}."`}}
+            runbook_url: {{ .Values.monitoring.runbookUrl }}#slow-api
+        - alert: ReadAloudSlowVoice
+          expr: |
+            histogram_quantile(0.95, sum by (le) (rate(readaloud_tts_synthesis_seconds_bucket{namespace="{{ $ns }}"}[5m]))) > 2
+          for: 10m
+          labels:
+            severity: warning
+            namespace: {{ $ns }}
+          annotations:
+            summary: The Piper voice in {{ $ns }} takes over 2 s per sentence
+            description: {{`"p95 speech time is {{ $value | humanizeDuration }}; listening will stutter."`}}
+            runbook_url: {{ .Values.monitoring.runbookUrl }}#slow-voice
+        - alert: ReadAloudLLMFailures
+          expr: sum(increase(readaloud_llm_requests_total{namespace="{{ $ns }}", status!="ok"}[15m])) > 5
+          labels:
+            severity: warning
+            namespace: {{ $ns }}
+          annotations:
+            summary: Gemini calls in {{ $ns }} are failing
+            description: {{`"{{ $value }} failed Summary/Ask calls in 15 minutes."`}}
+            runbook_url: {{ .Values.monitoring.runbookUrl }}#llm-failures
+        - alert: ReadAloudPodRestarting
+          expr: sum by (pod) (increase(kube_pod_container_status_restarts_total{namespace="{{ $ns }}"}[15m])) > 2
+          labels:
+            severity: warning
+            namespace: {{ $ns }}
+          annotations:
+            summary: {{`"Pod {{ $labels.pod }} restarted more than twice in 15 minutes"`}}
+            description: Usually a crash loop or the memory limit (OOMKilled).
+            runbook_url: {{ .Values.monitoring.runbookUrl }}#pod-restarting
+{{- end }}
