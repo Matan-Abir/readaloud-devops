@@ -16,6 +16,10 @@ docker compose up -d --build    # first start: ~5 min (plugins + SonarQube)
 ```
 
 Then open Jenkins, click **readaloud**, **Build with Parameters**, **Build**.
+Stages 6-8 need the cluster from `terraform/platform` and the namespaces from
+`terraform/environments` (see `docs/DEPLOYMENT.md`); untick **DEPLOY** to run
+stages 1-5 only. Put your Gemini key in `.env` (`GEMINI_API_KEY`) so the deployed
+app can summarize.
 
 ## The pipeline (`../Jenkinsfile`)
 
@@ -26,6 +30,10 @@ Then open Jenkins, click **readaloud**, **Build with Parameters**, **Build**.
 | 3 SAST | SonarQube scan, waits for the quality gate | quality gate fails |
 | 4 Security | GitLeaks (git history), Trivy on dependency files | a secret, or a fixable HIGH/CRITICAL CVE |
 | 5 Build + push | builds backend + web images, Trivy scans them, pushes to GHCR if `PUSH_IMAGES` | fixable HIGH/CRITICAL CVE in an image |
+| Cluster access | finds the Minikube node, writes a kubeconfig, loads the new images into the node | the cluster isn't running |
+| 6 Deploy | `helm upgrade --install --wait --rollback-on-failure` to dev, then staging, then prod (with approval, off by default) | pods never get Ready (Helm rolls back) |
+| 7 Verify | rollout status, `/healthz` + `/readyz`, Newman API collection per environment (JUnit report) | a health check or API test fails |
+| 8 Monitor | Prometheus scrapes the new pods, Grafana and Loki healthy, backend logs in Loki, no ReadAloud alert firing | monitoring is down; a firing alert makes the build unstable |
 
 Each tool runs in its own pinned container (`agent { docker { ... } }`), so the
 Jenkins image only needs the Docker CLI.
