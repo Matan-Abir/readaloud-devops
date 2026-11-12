@@ -1,1 +1,6 @@
 tests/alerts/rules.yaml
+
+# Local secrets (jenkins/.env holds the Gemini key and GHCR token). Never commit.
+.env
+*.env
+!*.env.example

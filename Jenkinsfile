@@ -19,6 +19,13 @@ pipeline {
     timeout(time: 60, unit: 'MINUTES')
   }
 
+  // Continuous integration: every 2 minutes Jenkins checks both repos (this one
+  // and the app repo checked out below) and starts a build when either has a new
+  // commit. The trigger is registered on the first run of this Jenkinsfile.
+  triggers {
+    pollSCM('H/2 * * * *')
+  }
+
   parameters {
     string(name: 'APP_REPO', defaultValue: 'https://github.com/Matan-Abir/readaloud-app.git',
            description: 'App repository to build')
@@ -31,6 +38,8 @@ pipeline {
                  description: 'After dev passes its tests, deploy the same images to staging')
     booleanParam(name: 'PROMOTE_TO_PROD', defaultValue: false,
                  description: 'After staging passes, ask for approval and deploy to prod (needs terraform workspace prod; ~1.5 GB more memory)')
+    booleanParam(name: 'DEPLOY_AWS', defaultValue: true,
+                 description: 'After the Minikube stages pass, roll the AWS (k3s) prod release to this commit\'s GHCR images. Skipped when the aws-kubeconfig credential does not exist (docs/CLOUD.md part 8)')
     string(name: 'CLUSTER', defaultValue: 'readaloud', description: 'Minikube profile name')
   }
 
@@ -51,6 +60,8 @@ pipeline {
         }
         script {
           env.IMAGE_TAG = sh(script: 'git -C app rev-parse --short HEAD', returnStdout: true).trim()
+          // GitHub Actions in the app repo tags the GHCR images with the full SHA.
+          env.APP_SHA = sh(script: 'git -C app rev-parse HEAD', returnStdout: true).trim()
           currentBuild.description = "${params.APP_BRANCH} @ ${env.IMAGE_TAG}"
         }
       }
@@ -294,6 +305,24 @@ pipeline {
             sh 'DEPLOY_ENV=prod HOSTNAME_UNDER_TEST=prod.readaloud.local ./scripts/api-tests.sh'
           }
           post { always { junit 'newman-prod.xml' } }
+        }
+      }
+    }
+
+    stage('6 Deploy: AWS') {
+      // Continuous deployment to the class demo in AWS. Runs only after every
+      // earlier stage passed, so a commit that breaks tests never reaches AWS.
+      when { expression { params.DEPLOY_AWS && (params.APP_BRANCH == 'master') } }
+      agent { docker { image 'dtzar/helm-kubectl:4.3.0'; args '--entrypoint='; reuseNode true } }
+      steps {
+        script {
+          try {
+            withCredentials([file(credentialsId: 'aws-kubeconfig', variable: 'AWS_KUBECONFIG')]) {
+              sh 'IMAGE_TAG="$APP_SHA" sh ./scripts/deploy-aws.sh'
+            }
+          } catch (org.jenkinsci.plugins.credentialsbinding.impl.CredentialNotFoundException e) {
+            echo 'No aws-kubeconfig credential in Jenkins: skipping the AWS deploy (docs/CLOUD.md part 8).'
+          }
         }
       }
     }

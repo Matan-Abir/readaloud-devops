@@ -51,7 +51,7 @@ aws sts get-caller-identity
 
 ```powershell
 cd "D:\Final Project\V1\readaloud-devops"
-git fetch origin; git switch aws-demo; git pull
+git fetch origin; git switch master; git pull
 cd terraform\state
 docker compose up -d
 ```
@@ -178,6 +178,52 @@ kubectl port-forward -n monitoring svc/kps-prometheus 9090
 ```
 
 then http://localhost:9090 > Alerts. Ctrl+C to stop.
+
+## Part 8. Automatic deploys from Jenkins (once, ~3 min)
+
+The whole chain, with no manual step after a `git push` to readaloud-app master:
+
+```
+git push ─▶ GitHub Actions: tests, build, push ghcr.io/...:<commit SHA> and :latest
+        └─▶ Jenkins polls every 2 min (pollSCM) ─▶ stages 1-8 on Minikube
+                 └─▶ "6 Deploy: AWS": waits for the <commit SHA> images on GHCR,
+                     helm upgrade --reuse-values with both image tags = that SHA,
+                     rolling update, rollback if the new pods never get Ready
+```
+
+Each AWS release is pinned to a commit SHA, so `helm history readaloud -n prod`
+shows which commit runs and `helm rollback readaloud <revision> -n prod` goes
+back to a known image. The script is `scripts/deploy-aws.sh`.
+
+Part 6 must have been done once (it sets the ingress host and the Gemini key,
+which the automatic deploys keep). Then give Jenkins the kubeconfig:
+
+1. http://localhost:8081 > **Manage Jenkins** > **Credentials** > **System** >
+   **Global credentials** > **Add Credentials**
+2. Kind **Secret file**, File: `$HOME\.kube\readaloud-aws.yaml`, ID
+   **`aws-kubeconfig`** > **Create**
+
+Jenkins runs on your PC, so it reaches the k3s API (port 6443) from the home IP
+the security group allows. Without the credential the stage just logs
+"skipping", so the Minikube-only pipeline still works. To turn it off for one
+run, untick **DEPLOY_AWS**. It only deploys builds of `master`.
+
+**Try it:** push a small change to readaloud-app master. **Expect** (about
+10-15 min): a Jenkins build starts on its own within 2 min, `6 Deploy: AWS`
+prints `Deploying ghcr.io/matan-abir/readaloud-*:<sha>`, and
+
+```powershell
+$env:KUBECONFIG = "$HOME\.kube\readaloud-aws.yaml"
+helm history readaloud -n prod
+```
+
+shows a new revision "Jenkins build N, image <sha>".
+
+By hand (same thing, from Git Bash in the devops folder):
+`AWS_KUBECONFIG=~/.kube/readaloud-aws.yaml IMAGE_TAG=<full sha> sh scripts/deploy-aws.sh`
+
+If you rebuild the server (`terraform destroy` + `apply`), the kubeconfig
+changes: redo Part 4, then update the `aws-kubeconfig` credential's file.
 
 ---
 
