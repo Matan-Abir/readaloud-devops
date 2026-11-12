@@ -40,7 +40,9 @@ web:
 
 # Non-secret configuration -> ConfigMap
 config:
-  GEMINI_MODEL: gemini-flash-latest
+  # Fast model for Summary/Ask; gemini-3.5-flash is richer but slower.
+  GEMINI_MODEL: gemini-3.5-flash-lite
+  LLM_TIMEOUT_SECONDS: "45"
   MAX_UPLOAD_MB: "50"
   LLM_CONTEXT_CHARS: "60000"
   TTS_CHUNK_CHARS: "1500"
