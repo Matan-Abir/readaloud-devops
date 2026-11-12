@@ -10,6 +10,18 @@ variable "base_domain" {
   default     = "readaloud.local"
 }
 
+variable "ingress_class_name" {
+  description = "IngressClass for the UIs: nginx (Minikube ingress addon) or traefik (k3s)"
+  type        = string
+  default     = "nginx"
+}
+
+variable "expose_admin_uis" {
+  description = "Give Prometheus and Alertmanager an Ingress too. They have no login, so turn this off on a cluster that is on the internet (use kubectl port-forward there)"
+  type        = bool
+  default     = true
+}
+
 variable "grafana_admin_password" {
   description = "Grafana admin password (user admin)"
   type        = string

@@ -85,12 +85,17 @@ resource "helm_release" "kube_prometheus_stack" {
   timeout    = 900
 
   values = [
-    templatefile("${path.module}/values/kube-prometheus-stack.yaml", local.hosts),
+    templatefile("${path.module}/values/kube-prometheus-stack.yaml", merge(local.hosts, {
+      ingress_class    = var.ingress_class_name
+      expose_admin_uis = var.expose_admin_uis
+    })),
     yamlencode({ alertmanager = { config = local.alertmanager_config } }),
   ]
 
+  # type = "string": otherwise Helm parses an all-digit password as a number and
+  # Grafana's secret template fails (b64enc: expected string; got int64).
   set_sensitive = [
-    { name = "grafana.adminPassword", value = var.grafana_admin_password },
+    { name = "grafana.adminPassword", value = var.grafana_admin_password, type = "string" },
   ]
 }
 

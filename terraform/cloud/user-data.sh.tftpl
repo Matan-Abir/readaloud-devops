@@ -1,0 +1,28 @@
+#!/bin/bash
+# First-boot script (cloud-init user data), rendered by Terraform.
+# Installs k3s: single-node Kubernetes with containerd, CoreDNS, the local-path
+# storage class (PVCs on the root disk), Traefik as the Ingress controller and
+# ServiceLB, which binds Traefik to ports 80/443 of the instance.
+# Progress: ssh in, then `cloud-init status --wait` or `sudo tail /var/log/cloud-init-output.log`.
+set -euxo pipefail
+
+hostnamectl set-hostname ${name}
+
+curl -sfL https://get.k3s.io | INSTALL_K3S_CHANNEL=${k3s_channel} sh -s - server \
+  --node-name ${name} \
+  --tls-san ${public_ip} \
+  --write-kubeconfig-mode 600
+
+until [ -s /etc/rancher/k3s/k3s.yaml ]; do sleep 2; done
+until k3s kubectl get nodes 2>/dev/null | grep -q ' Ready'; do sleep 5; done
+
+# kubeconfig for the PC: public address instead of 127.0.0.1 and a context
+# called ${name}-aws, so it can't be mixed up with Minikube.
+# Copy it with scp (see terraform output kubeconfig_command).
+sed -e "s#https://127.0.0.1:6443#https://${public_ip}:6443#" \
+    -e "s/: default$/: ${name}-aws/" \
+    /etc/rancher/k3s/k3s.yaml > /home/ubuntu/kubeconfig
+chown ubuntu:ubuntu /home/ubuntu/kubeconfig
+chmod 600 /home/ubuntu/kubeconfig
+
+echo "k3s ready: $(k3s --version | head -1)"

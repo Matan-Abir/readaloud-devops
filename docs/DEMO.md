@@ -1,5 +1,7 @@
 # Class demo script (about 15 minutes)
 
+No laptop in class? Run the demo from AWS instead: [CLOUD.md](CLOUD.md#demo-script-for-class-about-10-minutes).
+
 Two people? One talks, one drives. Alone: keep this file open on a second screen.
 
 ## Before class (30 min ahead, at home if possible)

@@ -1,6 +1,9 @@
 # kube-prometheus-stack, sized for one Minikube node on a 16 GB laptop.
 # Rendered by Terraform (templatefile): the three hostnames come from
-# var.base_domain. Alertmanager's routing is added from main.tf.
+# var.base_domain, the Ingress class from var.ingress_class_name (nginx on
+# Minikube, traefik on k3s in AWS), and expose_admin_uis turns the Prometheus and
+# Alertmanager Ingresses off where the cluster is on the public internet.
+# Alertmanager's routing is added from main.tf.
 
 # Short, predictable names: services kps-prometheus, kps-alertmanager, grafana.
 fullnameOverride: kps
@@ -20,8 +23,8 @@ windowsMonitoring:
 
 prometheus:
   ingress:
-    enabled: true
-    ingressClassName: nginx
+    enabled: ${expose_admin_uis}
+    ingressClassName: ${ingress_class}
     hosts: [${prometheus}]
     paths: [/]
   prometheusSpec:
@@ -45,8 +48,8 @@ prometheus:
 
 alertmanager:
   ingress:
-    enabled: true
-    ingressClassName: nginx
+    enabled: ${expose_admin_uis}
+    ingressClassName: ${ingress_class}
     hosts: [${alertmanager}]
     paths: [/]
   alertmanagerSpec:
@@ -64,7 +67,7 @@ grafana:
   defaultDashboardsTimezone: browser
   ingress:
     enabled: true
-    ingressClassName: nginx
+    ingressClassName: ${ingress_class}
     hosts: [${grafana}]
   grafana.ini:
     server:
