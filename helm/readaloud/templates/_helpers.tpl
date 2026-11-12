@@ -12,7 +12,8 @@
 helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version }}
 app.kubernetes.io/part-of: readaloud
 app.kubernetes.io/instance: {{ .Release.Name }}
-app.kubernetes.io/version: {{ .Values.backend.image.tag | quote }}
+{{- /* Label values allow no "@", so a digest-pinned tag (latest@sha256:...) is cut to its tag. */}}
+app.kubernetes.io/version: {{ splitList "@" (toString .Values.backend.image.tag) | first | trunc 63 | trimSuffix "-" | quote }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end -}}
 
