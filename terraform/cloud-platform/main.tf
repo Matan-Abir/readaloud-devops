@@ -4,7 +4,7 @@
 #   app-environment  the prod namespace with its quota and default limits
 # Differences from Minikube: Traefik (k3s's Ingress controller) instead of
 # ingress-nginx, nip.io hostnames, and no public Prometheus/Alertmanager UI.
-# The app itself is released with Helm afterwards (values-cloud.yaml).
+# The app itself is deployed by Argo CD (argocd.tf), from helm/readaloud in git.
 
 # Outputs of terraform/cloud (public IP, nip.io domain) from its remote state.
 data "terraform_remote_state" "cloud" {
@@ -17,6 +17,7 @@ data "terraform_remote_state" "cloud" {
 
 locals {
   base_domain = data.terraform_remote_state.cloud.outputs.base_domain
+  argocd_host = "argocd.${local.base_domain}"
 }
 
 module "monitoring" {

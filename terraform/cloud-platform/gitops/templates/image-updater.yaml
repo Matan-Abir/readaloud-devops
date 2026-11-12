@@ -1,0 +1,35 @@
+# Argo CD Image Updater: every 2 minutes, look up the digest of the `latest` tag
+# that GitHub Actions pushes on each merge to master. When it changes, write
+# `latest@sha256:<digest>` into the Application's Helm parameters
+# (backend.image.tag / web.image.tag). Argo CD then sees a changed spec and does a
+# rolling update. The digest pins the exact image, so a rollback in the Argo CD
+# UI goes back to a known build.
+apiVersion: argocd-image-updater.argoproj.io/v1alpha1
+kind: ImageUpdater
+metadata:
+  name: readaloud-prod
+  namespace: argocd
+spec:
+  # "argocd" write-back: store the new tag in the Application object itself.
+  # Needs no git credentials (the alternative, "git", commits the tag to the repo).
+  writeBackConfig:
+    method: argocd
+  commonUpdateSettings:
+    updateStrategy: digest
+    platforms:
+      - linux/amd64
+  applicationRefs:
+    - namePattern: readaloud-prod
+      images:
+        - alias: backend
+          imageName: ghcr.io/matan-abir/readaloud-backend:latest
+          manifestTargets:
+            helm:
+              name: backend.image.repository
+              tag: backend.image.tag
+        - alias: web
+          imageName: ghcr.io/matan-abir/readaloud-web:latest
+          manifestTargets:
+            helm:
+              name: web.image.repository
+              tag: web.image.tag

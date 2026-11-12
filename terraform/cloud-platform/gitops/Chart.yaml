@@ -1,0 +1,5 @@
+apiVersion: v2
+name: readaloud-gitops
+description: Argo CD Application and Image Updater config for ReadAloud prod on k3s (installed by terraform/cloud-platform/argocd.tf)
+type: application
+version: 0.1.0

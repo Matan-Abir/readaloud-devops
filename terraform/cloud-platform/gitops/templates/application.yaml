@@ -1,0 +1,43 @@
+# What Argo CD keeps running: the ReadAloud Helm chart from git, rendered with the
+# prod and cloud values, in the prod namespace.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: readaloud-prod
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: {{ .Values.repoURL }}
+    targetRevision: {{ .Values.targetRevision }}
+    path: helm/readaloud
+    helm:
+      # Same release name as the old `helm upgrade --install readaloud`, so the
+      # rendered objects have the same names and Argo CD adopts the running ones.
+      releaseName: readaloud
+      valueFiles:
+        - values-prod.yaml
+        - values-cloud.yaml
+      parameters:
+        # The nip.io host depends on the Elastic IP, so it comes from Terraform, not git.
+        - name: ingress.host
+          value: {{ .Values.ingressHost | quote }}
+        # Argo CD renders the chart without cluster access, so the chart's lookup()
+        # can't see the existing Secret and would make new random passwords on
+        # every sync. Instead the chart points at a Secret that lives only in the
+        # cluster (docs/CLOUD.md part 6), and the Gemini key never goes into git.
+        - name: secrets.existingSecret
+          value: {{ .Values.existingSecret | quote }}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: {{ .Values.namespace }}
+  syncPolicy:
+    automated:
+      prune: true     # delete what was removed from git
+      selfHeal: true  # undo changes made by hand (kubectl edit, helm upgrade)
+    retry:
+      limit: 5
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m

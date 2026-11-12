@@ -1,0 +1,6 @@
+# Set by terraform/cloud-platform/argocd.tf; the defaults are only for `helm template`.
+repoURL: https://github.com/Matan-Abir/readaloud-devops.git
+targetRevision: master
+namespace: prod
+ingressHost: app.example.nip.io
+existingSecret: readaloud-secret

@@ -6,14 +6,16 @@ output "namespace" {
   value = module.environment.namespace
 }
 
-output "helm_command" {
-  description = "PowerShell, from the readaloud-devops folder, with $gk holding the Gemini key (see the guide)"
-  value = join(" ", [
-    "helm upgrade --install readaloud helm/readaloud",
-    "-n ${module.environment.namespace}",
-    "-f helm/readaloud/values-prod.yaml -f helm/readaloud/values-cloud.yaml",
-    "--set-string ingress.host=app.${local.base_domain}",
-    "--set-string secrets.geminiApiKey=$gk",
-    "--wait --timeout 10m",
-  ])
+output "app_url" {
+  value = "http://app.${local.base_domain}"
+}
+
+output "argocd_url" {
+  description = "Argo CD UI, user admin"
+  value       = "http://${local.argocd_host}"
+}
+
+output "argocd_password_command" {
+  description = "PowerShell: prints the generated Argo CD admin password"
+  value       = "[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String((kubectl get secret -n argocd argocd-initial-admin-secret -o jsonpath='{.data.password}')))"
 }

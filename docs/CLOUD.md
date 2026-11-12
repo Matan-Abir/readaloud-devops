@@ -1,17 +1,23 @@
 # ReadAloud in AWS (class demo): set up, demo, tear down
 
 Windows PowerShell, one step at a time. Each step says what you should see.
-Why it is built this way: [ADR 0007](adr/0007-aws-demo-on-k3s.md).
+Why it is built this way: [ADR 0007](adr/0007-aws-demo-on-k3s.md) (k3s on EC2) and
+[ADR 0008](adr/0008-gitops-with-argo-cd.md) (Argo CD).
 
 ```
-your PC (Terraform, kubectl, helm)                 AWS us-east-1
+your PC (Terraform, kubectl)                       AWS us-east-1
   terraform/cloud ─────────────── creates ──────▶  EC2 m7i-flex.large, Ubuntu 24.04
   terraform/cloud-platform ─ kubeconfig :6443 ──▶   └ k3s (Kubernetes)
-  helm upgrade ──────────────── kubeconfig ─────▶      ├ monitoring: Prometheus, Grafana, Loki, ...
+                                                       ├ monitoring: Prometheus, Grafana, Loki, ...
+                                                       ├ argocd: Argo CD + Image Updater
                                                        └ prod: ReadAloud backend x2, web, Postgres
+GitHub readaloud-devops (Helm chart) ◀── Argo CD reads it every minute
+GHCR (public images, pushed by GitHub Actions) ◀── Image Updater checks every 2 min
 any browser ── http://app.<ip>.nip.io ── :80 ──▶  Traefik Ingress
-GHCR (public images, pushed by GitHub Actions) ──▶ pulled by k3s
 ```
+
+After setup your PC can be off: a merge to readaloud-app master reaches AWS
+through GitHub Actions, GHCR and Argo CD alone (Part 8).
 
 Cost: about **0.10 USD per hour** while the instance exists (about 2.40 USD a
 day). Stopped: a few cents a day. Destroyed: nothing.
@@ -122,47 +128,55 @@ terraform init "-backend-config=..\state\pg.tfbackend"
 terraform apply
 ```
 
-Type `yes`. **Expect** (5-10 min): `Apply complete! Resources: 10 added`, outputs
-`grafana_url` and `helm_command`.
+Type `yes`. **Expect** (5-10 min): `Apply complete! Resources: 14 added`, outputs
+`grafana_url`, `argocd_url`, `app_url` and `argocd_password_command`.
 
 ```powershell
 kubectl get pods -n monitoring
+kubectl get pods -n argocd
 ```
 
 **Expect:** grafana, kps-prometheus, kps-alertmanager, kps-operator,
 kube-state-metrics, node-exporter, loki, promtail, alert-receiver: all `Running`.
+In argocd: argocd-server, argocd-repo-server, argocd-application-controller,
+argocd-redis, argocd-applicationset-controller, argocd-image-updater: all `Running`.
 
-## Part 6. The app: Helm (~4 min)
+Argo CD starts deploying the app straight away. Until Part 6 the backend pods
+wait with `CreateContainerConfigError` (no Secret yet); that is expected.
 
-From the devops folder. The first line reads your Gemini key from the app's
-`.env` without printing it:
+## Part 6. The app's Secret (once, ~3 min)
+
+Argo CD deploys everything in the Helm chart except the Secret: the Gemini key
+must not be in git, and Argo CD can't keep generated passwords stable (ADR 0008).
+So the Secret is made once by hand. From the devops folder; the first line reads
+your Gemini key from the app's `.env` without printing it:
 
 ```powershell
 cd "D:\Final Project\V1\readaloud-devops"
 $gk = ((Get-Content "D:\Final Project\V1\readaloud-app\.env" | Select-String '^GEMINI_API_KEY=').Line -split '=', 2)[1].Trim()
 "Gemini key length: $($gk.Length)"
-$domain = terraform -chdir=terraform/cloud output -raw base_domain
-helm upgrade --install readaloud helm/readaloud -n prod `
-  -f helm/readaloud/values-prod.yaml -f helm/readaloud/values-cloud.yaml `
-  --set-string ingress.host=app.$domain `
-  --set-string secrets.geminiApiKey=$gk `
-  --wait --timeout 10m
+function New-Password { -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 32 | ForEach-Object { [char]$_ }) }
+kubectl create secret generic readaloud-secret -n prod `
+  --from-literal=GEMINI_API_KEY=$gk `
+  --from-literal=JWT_SECRET_KEY=$(New-Password) `
+  --from-literal=POSTGRES_PASSWORD=$(New-Password)
 ```
 
-**Expect:** a length of about 39, then (2-4 min, the backend image is big)
-`STATUS: deployed`.
+**Expect:** a length of about 39, then `secret/readaloud-secret created`.
+**Already had the app from the old `helm upgrade` instructions?** Skip this part:
+that release made the same Secret, and Argo CD adopts the running app as it is.
 
 ```powershell
 kubectl get pods,ingress -n prod
-terraform -chdir=terraform/cloud output app_url
+terraform -chdir=terraform/cloud-platform output app_url
 ```
 
-**Expect:** 2 backend, 1 web, 1 postgres pod `Running`; the ingress host
-`app.<ip>.nip.io`. Open the `app_url` in a browser (try your phone on mobile
-data too): register, upload a PDF, play, Summary.
+**Expect** (2-4 min, the backend image is big): 2 backend, 1 web, 1 postgres
+pod `Running`; the ingress host `app.<ip>.nip.io`. Open the `app_url` in a
+browser (try your phone on mobile data too): register, upload a PDF, play, Summary.
 
-Later upgrades: the same `helm upgrade` line. Without `--set-string
-secrets.geminiApiKey=...` the key already in the cluster is kept.
+Don't run `helm upgrade` or `helm uninstall` on prod any more: Argo CD owns it
+and undoes manual changes within a few minutes.
 
 ## Part 7. Grafana (~2 min)
 
@@ -179,51 +193,51 @@ kubectl port-forward -n monitoring svc/kps-prometheus 9090
 
 then http://localhost:9090 > Alerts. Ctrl+C to stop.
 
-## Part 8. Automatic deploys from Jenkins (once, ~3 min)
+## Part 8. Automatic deploys with Argo CD (GitOps)
 
-The whole chain, with no manual step after a `git push` to readaloud-app master:
+Nothing to set up: Part 5 installed it. The chain, with your PC off:
 
 ```
-git push ─▶ GitHub Actions: tests, build, push ghcr.io/...:<commit SHA> and :latest
-        └─▶ Jenkins polls every 2 min (pollSCM) ─▶ stages 1-8 on Minikube
-                 └─▶ "6 Deploy: AWS": waits for the <commit SHA> images on GHCR,
-                     helm upgrade --reuse-values with both image tags = that SHA,
-                     rolling update, rollback if the new pods never get Ready
+merge to readaloud-app master
+  └▶ GitHub Actions: tests, Trivy, build, push ghcr.io/matan-abir/readaloud-*:latest
+       └▶ Image Updater (in k3s, every 2 min): the digest of :latest changed
+            └▶ writes backend.image.tag / web.image.tag = latest@sha256:<digest>
+               into the Argo CD Application readaloud-prod
+                 └▶ Argo CD: rolling update of prod; old pods serve until the new are Ready
+
+merge to readaloud-devops master (chart, values-prod.yaml, values-cloud.yaml)
+  └▶ Argo CD (every minute) renders the chart again and applies the difference
 ```
 
-Each AWS release is pinned to a commit SHA, so `helm history readaloud -n prod`
-shows which commit runs and `helm rollback readaloud <revision> -n prod` goes
-back to a known image. The script is `scripts/deploy-aws.sh`.
+Jenkins still runs the full pipeline on Minikube (dev, staging) on your PC; AWS
+prod no longer depends on it.
 
-Part 6 must have been done once (it sets the ingress host and the Gemini key,
-which the automatic deploys keep). Then give Jenkins the kubeconfig:
-
-1. http://localhost:8081 > **Manage Jenkins** > **Credentials** > **System** >
-   **Global credentials** > **Add Credentials**
-2. Kind **Secret file**, File: `$HOME\.kube\readaloud-aws.yaml`, ID
-   **`aws-kubeconfig`** > **Create**
-
-Jenkins runs on your PC, so it reaches the k3s API (port 6443) from the home IP
-the security group allows. Without the credential the stage just logs
-"skipping", so the Minikube-only pipeline still works. To turn it off for one
-run, untick **DEPLOY_AWS**. It only deploys builds of `master`.
-
-**Try it:** push a small change to readaloud-app master. **Expect** (about
-10-15 min): a Jenkins build starts on its own within 2 min, `6 Deploy: AWS`
-prints `Deploying ghcr.io/matan-abir/readaloud-*:<sha>`, and
+**The Argo CD UI:** `terraform -chdir=terraform/cloud-platform output argocd_url`,
+user **admin**, password:
 
 ```powershell
 $env:KUBECONFIG = "$HOME\.kube\readaloud-aws.yaml"
-helm history readaloud -n prod
+terraform -chdir=terraform/cloud-platform output -raw argocd_password_command | Invoke-Expression
 ```
 
-shows a new revision "Jenkins build N, image <sha>".
+**Expect:** the `readaloud-prod` app, **Synced** and **Healthy**, with its tree
+of Deployments, Pods, Services and the Ingress. **History and rollback** shows
+each deploy; **Rollback** on an older entry goes back to that image (automatic
+sync pauses until you press **Sync** again).
 
-By hand (same thing, from Git Bash in the devops folder):
-`AWS_KUBECONFIG=~/.kube/readaloud-aws.yaml IMAGE_TAG=<full sha> sh scripts/deploy-aws.sh`
+**Try it:** change something small in readaloud-app on github.com and commit to
+master. **Expect** (about 5-8 min): the Actions run goes green, within 2 min
+the Image Updater log shows the new digest, and Argo CD shows the app
+**Progressing** then **Healthy** again with new pods:
 
-If you rebuild the server (`terraform destroy` + `apply`), the kubeconfig
-changes: redo Part 4, then update the `aws-kubeconfig` credential's file.
+```powershell
+kubectl logs -n argocd deploy/argocd-image-updater --tail 20
+kubectl get imageupdater -n argocd
+kubectl get pods -n prod -w
+```
+
+**Self-healing of config:** `kubectl scale deploy readaloud-backend -n prod --replicas 1`;
+within a few seconds Argo CD sets it back to 2, because git says 2.
 
 ---
 
@@ -284,7 +298,7 @@ records the whole screen; Win+G only records one window):
 3. `kubectl get nodes,pods -A`; `kubectl get ingress -n prod`.
 4. Self-healing: `kubectl delete pod -n prod -l app.kubernetes.io/name=readaloud-backend`
    then `kubectl get pods -n prod -w` until a new pod is Ready, and the app still works.
-5. Rolling update: the `helm upgrade` command, then `helm history readaloud -n prod`.
+5. Rolling update: commit a change to readaloud-app master, then `kubectl get pods -n prod -w` while Argo CD replaces the pods one by one.
 6. The Jenkins pipeline on Minikube, all stages green (or screenshots of Pipeline Overview).
 7. Optional: `terraform destroy` + `apply` timed, to show the whole server is code.
 
@@ -296,9 +310,10 @@ records the whole screen; Win+G only records one window):
    EC2 instance made by Terraform, running Kubernetes (k3s), the same Helm chart as on Minikube".
 3. **The code, 2 min:** GitHub `readaloud-devops`: `terraform/cloud/main.tf`,
    `terraform/cloud-platform/main.tf` (same modules as Minikube),
-   `helm/readaloud/values-cloud.yaml`, ADR 0007.
-4. **CI, 1 min:** GitHub Actions in readaloud-app (tests, Trivy, push to GHCR)
-   and the public packages: the images the cluster runs.
+   `terraform/cloud-platform/argocd.tf`, `helm/readaloud/values-cloud.yaml`, ADR 0007 and 0008.
+4. **CI/CD, 2 min:** GitHub Actions in readaloud-app (tests, Trivy, push to GHCR)
+   and the public packages: the images the cluster runs. Then the Argo CD UI
+   (`argocd_url`): `readaloud-prod` Synced and Healthy, its resource tree, History.
 5. **Monitoring, 2 min:** Grafana > ReadAloud dashboard (Environment = prod):
    the requests you just made. Dashboards > Kubernetes / Compute Resources /
    Namespace (Pods), namespace `prod`: the pods live, with CPU and memory.

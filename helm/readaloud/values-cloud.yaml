@@ -1,13 +1,11 @@
-# AWS (k3s on one EC2 instance), layered on top of values-prod.yaml:
-#   helm upgrade --install readaloud helm/readaloud -n prod \
-#     -f helm/readaloud/values-prod.yaml -f helm/readaloud/values-cloud.yaml \
-#     --set-string ingress.host=app.<ip>.nip.io --set-string secrets.geminiApiKey=...
-# The host comes from `terraform -chdir=terraform/cloud output base_domain`.
+# AWS (k3s on one EC2 instance), layered on top of values-prod.yaml.
+# Argo CD renders the chart with both files (terraform/cloud-platform/gitops,
+# ADR 0008) and adds ingress.host and secrets.existingSecret as parameters.
 
 # Images that GitHub Actions in readaloud-app pushes to GHCR on every merge to
-# master (public packages, so the cluster needs no pull secret). `latest` +
-# Always = every rollout pulls the newest master build; pin a commit SHA tag
-# for a reproducible release.
+# master (public packages, so the cluster needs no pull secret). Argo CD Image
+# Updater replaces `latest` with `latest@sha256:<digest>` of the newest build,
+# which pins the exact image and triggers the rolling update.
 backend:
   image:
     repository: ghcr.io/matan-abir/readaloud-backend
